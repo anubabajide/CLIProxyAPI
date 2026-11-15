@@ -796,6 +796,9 @@ func (h *Handler) buildAuthFileEntryLocked(auth *coreauth.Auth, quota authFileQu
 	if weight, ok := authWeightValue(auth); ok {
 		entry[coreauth.AttributeWeight] = weight
 	}
+	if reserve := coreauth.QuotaReserveLimits(auth); len(reserve) > 0 {
+		entry[coreauth.QuotaReserveMetadataKey] = reserve
+	}
 	if websockets, ok := authWebsocketsValue(auth); ok {
 		entry["websockets"] = websockets
 	}
