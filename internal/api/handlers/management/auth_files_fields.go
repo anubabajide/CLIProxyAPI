@@ -420,6 +420,16 @@ func applyAuthFileFieldsPatch(targetAuth *coreauth.Auth, req map[string]json.Raw
 			return &authFileFieldPatchError{message: "weight does not support nested fields"}
 		} else if fieldPath == "headers" {
 			applyAuthFileHeadersPatch(targetAuth, value)
+		} else if rootAuthFileField(fieldPath) == coreauth.QuotaReserveMetadataKey {
+			reserve, errReserve := normalizeQuotaReservePatch(fieldPath, value)
+			if errReserve != nil {
+				return &authFileFieldPatchError{message: errReserve.Error()}
+			}
+			if reserve == nil {
+				delete(targetAuth.Metadata, coreauth.QuotaReserveMetadataKey)
+			} else {
+				targetAuth.Metadata[coreauth.QuotaReserveMetadataKey] = reserve
+			}
 		} else if errSet := setAuthFileMetadataValue(targetAuth.Metadata, fieldPath, value); errSet != nil {
 			return &authFileFieldPatchError{message: errSet.Error()}
 		}
@@ -461,6 +471,45 @@ func applyAuthFileFieldsPatch(targetAuth *coreauth.Auth, req map[string]json.Raw
 
 	targetAuth.UpdatedAt = time.Now()
 	return nil
+}
+
+// normalizeQuotaReservePatch validates a quota_reserve object. Each window maps to the
+// minimum remaining percentage to preserve; null, empty objects, and zero values clear it.
+func normalizeQuotaReservePatch(fieldPath string, value any) (map[string]any, error) {
+	if fieldPath != coreauth.QuotaReserveMetadataKey {
+		return nil, fmt.Errorf("quota_reserve does not support nested fields")
+	}
+	if value == nil {
+		return nil, nil
+	}
+	raw, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("quota_reserve must be an object or null")
+	}
+	reserve := make(map[string]any, len(raw))
+	for window, rawPercent := range raw {
+		if !coreauth.IsQuotaReserveWindow(window) {
+			return nil, fmt.Errorf("quota_reserve has unknown window %q", window)
+		}
+		if rawPercent == nil {
+			continue
+		}
+		number, okNumber := rawPercent.(json.Number)
+		if !okNumber {
+			return nil, fmt.Errorf("quota_reserve.%s must be a number", window)
+		}
+		percent, errFloat := number.Float64()
+		if errFloat != nil || percent < 0 || percent >= 100 {
+			return nil, fmt.Errorf("quota_reserve.%s must be between 0 and 100", window)
+		}
+		if percent > 0 {
+			reserve[window] = percent
+		}
+	}
+	if len(reserve) == 0 {
+		return nil, nil
+	}
+	return reserve, nil
 }
 
 func decodeAuthFileFieldValue(raw json.RawMessage) (any, error) {

@@ -157,7 +157,9 @@ type Auth struct {
 	forceCooldownSeeded bool      `json:"-"`
 
 	recentRequests recentRequestRing `json:"-"`
-	indexAssigned  bool              `json:"-"`
+	// quotaReserveUsage is the latest usage snapshot used to enforce configured quota reserves.
+	quotaReserveUsage *QuotaReserveUsage `json:"-"`
+	indexAssigned     bool               `json:"-"`
 	// fileSnapshotPath and fileSnapshotDigest bind an unversioned file-synthesized
 	// Auth snapshot to the source file path and SHA-256 byte digest it observed.
 	// Cleared when committed to a Manager so runtime clones are not treated as
